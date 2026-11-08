@@ -1,6 +1,5 @@
 """Build the profile card: pulsing asteroid particles behind the text."""
 
-import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -107,30 +106,30 @@ class Rng:
         return low + (high - low) * self.unit()
 
 
+CYCLE = 6.8
+CLOCK = 'keyTimes="0;0.2;0.52;0.68;1" calcMode="linear" dur="6.8s" repeatCount="indefinite"'
+
+
 def pulse(inner, outer):
-    samples = (0, 0.18, 0.5, 0.82, 1)
-    distances = []
-    for t in samples:
-        amount = math.sin(math.pi * t)
-        distances.append(inner + (outer - inner) * amount)
+    distances = (inner, inner, outer, outer, inner)
     values = ";".join(f"{distance:.1f},0" for distance in distances)
-    return f'values="{values}" keyTimes="0;0.18;0.5;0.82;1" calcMode="linear"'
+    return f'values="{values}" {CLOCK}'
 
 
 def asteroid_svg(size, kind, color):
     shapes = {
         0: (
-            rect(-size * 1.2, -1.1, size, 2.2, color, 0.45)
+            rect(-size * 0.35, -1, size * 0.3, 2, color, 0.35)
             + rect(0, -size * 0.32, size, size * 0.58, color)
             + rect(size * 0.62, 0, size * 0.42, size * 0.42, color)
         ),
         1: (
-            rect(-size * 1.05, -1, size * 0.8, 2, color, 0.4)
+            rect(-size * 0.32, -1, size * 0.28, 2, color, 0.35)
             + rect(-size * 0.1, -size * 0.42, size * 0.95, size * 0.38, color)
             + rect(size * 0.15, -size * 0.05, size * 0.5, size * 0.62, color)
         ),
         2: (
-            rect(-size, -1, size * 0.7, 2, color, 0.4)
+            rect(-size * 0.3, -1, size * 0.26, 2, color, 0.35)
             + rect(0, -size * 0.36, size * 0.7, size * 0.7, color)
             + rect(size * 0.4, size * 0.08, size * 0.36, size * 0.32, color)
         ),
@@ -138,35 +137,43 @@ def asteroid_svg(size, kind, color):
     return shapes[kind]
 
 
-def field(cx, cy):
+def field(cx, cy, frozen=None):
     rng = Rng(11)
     groups = (
-        ("dust", 52, (8, 40), (60, 180), (3, 5.5), (2.6, 4.2), (0.25, 0.5)),
-        ("rock", 78, (18, 80), (140, 320), (6, 11), (3.8, 6.4), (0.55, 0.92)),
-        ("chunk", 20, (28, 100), (200, 430), (12, 17), (5, 7.4), (0.8, 1)),
+        ("dust", 70, (0, 22), (460, 620), (4, 7), (0.45, 0.8)),
+        ("rock", 90, (2, 36), (600, 820), (8, 13), (0.75, 1)),
+        ("chunk", 32, (4, 48), (740, 980), (14, 22), (0.9, 1)),
     )
     colors = (CYAN, MAGENTA, INK)
     parts = []
     index = 0
-    for _name, count, inner_span, travel_span, size_span, dur_span, opacity_span in groups:
+    for _name, count, inner_span, outer_span, size_span, opacity_span in groups:
         for _ in range(count):
             angle = rng.unit() * 360
             inner = rng.span(*inner_span)
-            outer = inner + rng.span(*travel_span)
+            outer = rng.span(*outer_span)
             size = rng.span(*size_span)
-            dur = rng.span(*dur_span)
             opacity = rng.span(*opacity_span)
-            begin = -rng.unit() * dur
             color = colors[index % 3]
             kind = index % 3
             index += 1
+            shape = asteroid_svg(size, kind, color)
+            if frozen == "out":
+                body = f'<g transform="translate({outer:.1f},0) scale(1.2)">{shape}</g>'
+            elif frozen == "in":
+                body = f'<g transform="translate({inner:.1f},0)">{shape}</g>'
+            else:
+                body = (
+                    "<g>"
+                    f'<animateTransform attributeName="transform" type="translate" {pulse(inner, outer)}/>'
+                    "<g>"
+                    f'<animateTransform attributeName="transform" type="scale" '
+                    f'values="1,1;1,1;1.15,1.15;1.15,1.15;1,1" {CLOCK}/>'
+                    f"{shape}</g></g>"
+                )
             parts.append(
                 f'<g transform="translate({cx:.1f},{cy:.1f}) rotate({angle:.2f})" opacity="{opacity:.2f}">'
-                f"<g>"
-                f'<animateTransform attributeName="transform" type="translate" '
-                f'{pulse(inner, outer)} dur="{dur:.2f}s" begin="{begin:.2f}s" repeatCount="indefinite"/>'
-                f"{asteroid_svg(size, kind, color)}"
-                f"</g></g>"
+                f"{body}</g>"
             )
     return "".join(parts)
 
@@ -192,7 +199,7 @@ def broken_frame():
     )
 
 
-def build():
+def build(frozen=None):
     meta_font, meta_step, meta_cell = 34, 2, 3
     interests = "篮球、跑步、游泳、听歌...."
     status = "学习ing"
@@ -234,7 +241,7 @@ def build():
   </defs>
   <g clip-path="url(#card)">
     {rect(0, 0, W, H, BG)}
-    {field(W / 2, H / 2)}
+    {field(W / 2, H / 2, frozen)}
     {text}
   </g>
   {broken_frame()}
